@@ -16,6 +16,19 @@ function Room() {
   const [error, setError] = useState(null);
   const [room, setRoom] = useState(null);
   const [questions, setQuestions] = useState([]);
+  const[topQuestions, setTopQuestions] =useState([]);
+
+  const fetchTopQuestions = async() => {
+    try{
+      const response = await.get(`${serverEndpoint}/room/${code}/top-questions`,{
+        withCredentials:true
+      });
+      setTopQuestions(response.data || []);
+    }catch(error){
+      console.log(error);
+      setErrors({message:'Unable to fetch top Questions'});
+    }
+  };
 
   const fetchRoom = async () => {
     try {
@@ -72,7 +85,11 @@ function Room() {
   return (
     <div className="container py-5">
       <h2 className="mb-2">Room: {code}</h2>
-
+      <button className="btn btn-sm btn-outline-success" onClick={fetchTopQuestions}>
+        Get Top Questions
+      </button>
+      <hr/>
+      {topQuestions.length >0 &&}
       <div className="row mb-4">
         <div className="col">
           <ul className="list-group">
