@@ -1,5 +1,6 @@
 const Rooms = require("../models/Rooms");
 const Questions = require("../models/Questions");
+const { callGemini } = require("../services/geminiService");
 
 const roomController = {
     // POST: /room/
@@ -50,6 +51,9 @@ const roomController = {
                 createdBy: createdBy
             });
 
+            const io= request.app.get("io");
+            io.to(code).emit("new-question",question);
+
             response.json(question);
         } catch (error) {
             console.log(error);
@@ -69,6 +73,23 @@ const roomController = {
         } catch (error) {
             console.log(error);
             response.status(500).json({ message: 'Internal server error' });
+        }
+    },
+
+    generateTopQuestion: async (request,response) =>{
+        try{
+            const code =request.params.code;
+
+            const questions = await Question.find({roomCode:code });
+            if(questiona.length === 0) return response.json([]);
+
+            const topQuestions =await callGemini(questions);
+            response.json(topQuestions);
+
+        }
+        catch(error){
+            console.log(error);
+            response.status(500).json({message: 'Internal server error'})
         }
     },
 };
