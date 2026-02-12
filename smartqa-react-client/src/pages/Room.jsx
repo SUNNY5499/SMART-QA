@@ -1,34 +1,29 @@
 import { useParams } from "react-router-dom";
-import Question from "./Question";
 import { useEffect, useState } from "react";
 import axios from "axios";
+import Question from "./Question";
 import { serverEndpoint } from "../config/appConfig";
-import { io } from "socket.io-client";
-
-// Create socket connection (you can move this to a separate file)
-const socket = io(serverEndpoint, {
-  withCredentials: true,
-});
+import socket from "../config/socket";
 
 function Room() {
   const { code } = useParams();
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const [errors, setErrors] = useState({});
   const [room, setRoom] = useState(null);
   const [questions, setQuestions] = useState([]);
-  const[topQuestions, setTopQuestions] =useState([]);
+  const [topQuestions, setTopQuestions] = useState([]);
 
   const fetchTopQuestions = async() => {
     try{
-      const response = await.get(`${serverEndpoint}/room/${code}/top-questions`,{
-        withCredentials:true
+      const response = await axios.get(`${serverEndpoint}/room/${code}/top-question`, {
+        withCredentials: true
       });
       setTopQuestions(response.data || []);
     }catch(error){
       console.log(error);
-      setErrors({message:'Unable to fetch top Questions'});
+      setErrors({ message: 'Unable to fetch top questions' });
     }
-  };
+  }
 
   const fetchRoom = async () => {
     try {
@@ -36,9 +31,9 @@ function Room() {
         withCredentials: true,
       });
       setRoom(response.data);
-    } catch (err) {
-      console.error(err);
-      setError({ message: "Unable to fetch room details. Please try again." });
+    } catch (error) {
+      console.log(error);
+      setErrors({ message: 'Unable to fetch room details, please try again' });
     }
   };
 
@@ -48,9 +43,9 @@ function Room() {
         withCredentials: true,
       });
       setQuestions(response.data);
-    } catch (err) {
-      console.error(err);
-      setError({ message: "Unable to fetch questions. Please try again." });
+    } catch (error) {
+      console.log(error);
+      setErrors({ message: 'Unable to fetch questions, please try again' });
     }
   };
 
@@ -64,45 +59,64 @@ function Room() {
 
     fetchData();
 
-    // Join room via socket
     socket.emit("join-room", code);
 
-    // Listen for new questions
     socket.on("new-question", (question) => {
       setQuestions((prev) => [question, ...prev]);
     });
 
-    // Cleanup on unmount
     return () => {
       socket.off("new-question");
     };
   }, [code]);
 
-  if (loading) return <div className="container py-5">Loading...</div>;
+  if (loading) {
+    return (
+      <div className="container text-center py-5">
+        <h3>Loading</h3>
+        <p>Fetching room details...</p>
+      </div>
+    );
+  }
 
-  if (error) return <div className="container py-5 text-danger">{error.message}</div>;
+  if (errors.message) {
+    return (
+      <div className="container text-center py-5">
+        <h3>Error!</h3>
+        <p>{errors.message}</p>
+      </div>
+    );
+  }
 
   return (
     <div className="container py-5">
-      <h2 className="mb-2">Room: {code}</h2>
+      <h2 className="mb-3">Room: {code}</h2>
       <button className="btn btn-sm btn-outline-success" onClick={fetchTopQuestions}>
         Get Top Questions
       </button>
       <hr/>
-      {topQuestions.length >0 &&}
-      <div className="row mb-4">
-        <div className="col">
-          <ul className="list-group">
-            {questions.map((ques) => (
-              <li key={ques._id} className="list-group-item">
-                {ques.content}
-              </li>
+      {topQuestions.length > 0 && (
+        <div className="mt-2">
+          <h5>Top Questions</h5>
+          <ul>
+            {topQuestions.map((question, index)=> (
+              <li key={index}>{question}</li>
             ))}
           </ul>
         </div>
+      )}
+      <div className="mb-4">
+        <h5>Questions</h5>
+        <ul className="list-group">
+          {questions.map((ques) => (
+            <li key={ques._id} className="list-group-item">
+              {ques.content}
+            </li>
+          ))}
+        </ul>
       </div>
 
-      <div className="row">
+      <div className="mt-4">
         <Question roomCode={code} />
       </div>
     </div>

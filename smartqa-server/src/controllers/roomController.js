@@ -1,97 +1,134 @@
-const Rooms = require("../models/Rooms");
+const { validationResult } = require('express-validator');
 const Questions = require("../models/Questions");
+const Rooms = require("../models/Rooms");
+const Users = require("../models/User");
 const { callGemini } = require("../services/geminiService");
+const mongoose = require('mongoose');
 
 const roomController = {
-    // POST: /room/
-    createRoom: async (request, response) => {
-        try {
-            const { createdBy } = request.body;
+ createRoom: async (request, response) => {
+  try {
+    const { createdBy } = request.body;
 
-            const code = Math.random().toString(36)
-                .substring(2, 8).toUpperCase();
+    if (!createdBy) {
+      return response.status(400).json({ message: 'createdBy is required' });
+    }
 
-            const room = await Rooms.create({
-                roomCode: code,
-                createdBy: createdBy
-            });
+    const code = Math.random().toString(36).substring(2, 8).toUpperCase();
 
-            response.json(room);
-        } catch (error) {
-            console.log(error);
-            response.status(500).json({ message: 'Internal server error' });
-        }
-    },
+    const room = await Rooms.create({
+      roomCode: code,
+      createdBy, 
+    });
 
-    // GET /room/:code
-    getByRoomCode: async (request, response) => {
-        try {
-            const code = request.params.code;
+    response.json(room);
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({ message: 'Internal Server Error' });
+  }
+},
 
-            const room = await Rooms.findOne({ roomCode: code });
-            if (!room) {
-                return response.status(404).json({ message: 'Invalid room code' });
-            }
 
-            response.json(room);
-        } catch (error) {
-            console.log(error);
-        }
-    },
+  getByRoomCode: async (request, response) => {
+    try {
+      const code = request.params.code;
+      const room = await Rooms.findOne({ roomCode: code });
+      if (!room) return response.status(404).json({ message: 'Invalid room code' });
+      response.json(room);
+    } catch (error) {
+      response.status(500).json({ message: 'Internal Server Error' });
+    }
+  },
 
-    // POST /room/:code/question
-    createQuestion: async (request, response) => {
-        try {
-            const { content, createdBy } = request.body;
-            const { code } = request.params;
+  createQuestion: async (request, response) => {
+    const errors = validationResult(request);
+    if (!errors.isEmpty()) return response.status(400).json({ errors: errors.array() });
 
-            const question = await Questions.create({
-                roomCode: code,
-                content: content,
-                createdBy: createdBy
-            });
+    try {
+      const { content, createdBy } = request.body;
+      const { code } = request.params;
 
-            const io= request.app.get("io");
-            io.to(code).emit("new-question",question);
+      if (!createdBy) {
+      return response.status(400).json({ message: 'createdBy is required' });
+    }
 
-            response.json(question);
-        } catch (error) {
-            console.log(error);
-            response.status(500).json({ message: 'Internal server error' });
-        }
-    },
+    const question = await Questions.create({
+      roomCode: code,
+      content,
+      createdBy // ✅ now you control who asked the question
+    });
+    const io = request.app.get("io");
+    io.to(code).emit("emit-question", question);
 
-    // GET /room/:code/question
-    getQuestions: async (request, response) => {
-        try {
-            const code = request.params.code;
+    response.json(question);
+    } catch (error) {
+      response.status(500).json({ message: 'Internal Server Error' });
+    }
+  },
 
-            const questions = await Questions.find({ roomCode: code })
-                .sort({ createdAt: -1 });
+  getQuestion: async (request, response) => {
+    try {
+      const code = request.params.code;
+      const questions = await Questions.find({ roomCode: code }).sort({ createdAt: -1 });
+      response.json(questions);
+    } catch (error) {
+      response.status(500).json({ message: 'Internal Server Error' });
+    }
+  },
 
-            response.json(questions);
-        } catch (error) {
-            console.log(error);
-            response.status(500).json({ message: 'Internal server error' });
-        }
-    },
+  generateTopQuestions: async (request, response) => {
+    try{
+      const code = request.params.code;
 
-    generateTopQuestion: async (request,response) =>{
-        try{
-            const code =request.params.code;
+      const questions = await Questions.find({ roomCode: code});
+      if(questions.length === 0) return response.json([]);
 
-            const questions = await Question.find({roomCode:code });
-            if(questiona.length === 0) return response.json([]);
+      const TopQuestions = await callGemini(questions);
+      response.json(TopQuestions);
+    }catch(error){
+      console.log(error);
+      response.status(500).json({ message: 'Internal server error' });
+    }
+  },
 
-            const topQuestions =await callGemini(questions);
-            response.json(topQuestions);
+  deleteRoom: async (request, response) => {
+    try {
+      const { code } = request.params;
+      const deleted = await Rooms.findOneAndDelete({ roomCode: code });
+      if (!deleted) return response.status(404).json({ message: 'Room not found' });
+      await Questions.deleteMany({ roomCode: code });
+      response.json({ message: 'Room and its questions deleted' });
+    } catch (error) {
+       console.error(error);
+      response.status(500).json({ message: 'Internal Server Error' });
+    }
+  },
 
-        }
-        catch(error){
-            console.log(error);
-            response.status(500).json({message: 'Internal server error'})
-        }
-    },
+
+deleteQuestion: async (request, response) => {
+  try {
+    const { code, id } = request.params;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return response.status(400).json({ message: 'Invalid question ID' });
+    }
+
+    const question = await Questions.findOneAndDelete({
+      _id: id,
+      roomCode: code
+    });
+
+    if (!question) {
+      return response.status(404).json({ message: 'Question not found' });
+    }
+
+    response.json({ message: 'Question deleted successfully' });
+  } catch (error) {
+    console.log(error);
+    response.status(500).json({ message: 'Internal Server Error' });
+  }
+}
+
 };
 
 module.exports = roomController;

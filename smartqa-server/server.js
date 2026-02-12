@@ -1,67 +1,59 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const mongoose = require('mongoose');
-const roomRoutes = require('./src/routes/roomRoutes');
-const http = require('http');
+const http = require('http'); // ✅ fix: destructuring removed
 const { Server } = require('socket.io');
+const mongoose = require('mongoose');
+const cookieParser = require('cookie-parser');
 
-const app = express(); // Create instance of express
+const roomRoutes = require('./src/routes/roomRoutes');
+const authRoutes = require('./src/routes/authRoutes');
 
-// Middleware
-app.use(express.json());
-
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URL, {
-    useNewUrlParser: true,
-    useUnifiedTopology: true
-})
-.then(() => console.log('✅ MongoDB Connected'))
-.catch((error) => console.log('❌ Error connecting to DB:', error));
-
-// CORS Configuration
-const corsConfig = {
-    origin: process.env.CLIENT_URL,
-    credentials: true
-};
-app.use(cors(corsConfig));
-
-// HTTP Server
+const app = express();
 const ourServer = http.createServer(app);
 
-// Socket.io Setup
 const io = new Server(ourServer, {
-    cors: {
-        origin: process.env.CLIENT_URL,
-        methods: ["GET", "POST", "DELETE", "UPDATE"]
-    }
+  cors: {
+    origin: process.env.CLIENT_URL || 'http://localhost:5173',
+    methods: ['GET', 'POST', 'DELETE', 'UPDATE'],
+    credentials: true
+  }
 });
+
+app.use(express.json());
+app.use(cookieParser());
+app.use(cors({
+  origin: process.env.CLIENT_URL || 'http://localhost:5173',
+  credentials: true
+}));
 
 io.on("connection", (socket) => {
-    console.log('🟢 New client connection:', socket.id);
+  console.log('New client connected:', socket.id);
 
-    socket.on("join-room", (roomCode) => {
-        socket.join(roomCode);
-        console.log(`📥 User joined the room: ${roomCode}`);
-    });
+  socket.on("join-room", (roomCode) => {
+    socket.join(roomCode);
+    console.log(`User joined room: ${roomCode}`);
+  });
 
-    socket.on("disconnect", () => {
-        console.log("🔴 Client disconnected:", socket.id);
-    });
+  socket.on("disconnect", () => {
+    console.log("Client disconnected:", socket.id);
+  });
 });
 
-// Make io accessible in routes
 app.set("io", io);
 
-// Routes
+mongoose.connect(process.env.MONGODB_URL)
+  .then(() => console.log('MongoDB Connected'))
+  .catch((error) => console.log('DB Connection Error:', error));
+
+app.use('/auth', authRoutes);
 app.use('/room', roomRoutes);
 
-// Start the Server
-const PORT = process.env.PORT || 5000;
+const PORT = process.env.PORT || 5001;
 ourServer.listen(PORT, (error) => {
-    if (error) {
-        console.log('❌ Server failed to start:', error);
-    } else {
-        console.log(`🚀 Server running on port: ${PORT}`);
-    }
+  if (error) {
+    console.log('Server not started due to:', error);
+  } else {
+    console.log(`Server running on port ${PORT}`);
+  }
 });
